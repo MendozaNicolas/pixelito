@@ -2,13 +2,17 @@ package org.pixelito;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
 import org.pixelito.block.Block;
 import org.pixelito.block.BlockType;
 import org.pixelito.camera.Camera;
 import org.pixelito.graphics.ShaderProgram;
 import org.pixelito.graphics.Texture;
+import org.pixelito.input.InputManager;
 import org.pixelito.input.KeyCode;
 import org.pixelito.input.Keyboard;
 import org.pixelito.input.Mouse;
@@ -18,28 +22,18 @@ import org.pixelito.render.VoxelMesher;
 import org.pixelito.util.PerformanceMetrics;
 import org.pixelito.window.Window;
 
-public class Game {
+public class ___Game {
 
     private Window window;
     private Mesh mesh;
     private ShaderProgram shader;
+    private Camera camera;
     private Texture blockTexture;
     private boolean useGreedyMesher = true; // Toggle to compare meshing algorithms
     
-    // Camera for first-person navigation
-    private Camera camera;
-    
-    // World dimensions
-    private static final int WORLD_SIZE_X = 32;
-    private static final int WORLD_SIZE_Y = 8;
-    private static final int WORLD_SIZE_Z = 32;
-
     // Mesh statistics for performance comparison
     private int vertexCount;
     private int faceCount;
-    
-    // Toggle for mouse capture (cursor visibility)
-    private boolean mouseCaptured = true;
 
     /**
      * Sets whether to use the optimized greedy meshing algorithm.
@@ -64,20 +58,9 @@ public class Game {
     private void init() {
         window = new Window(1280, 720, "Pixelito", true);
         window.create();
-        
-        // Create camera with initial position slightly above the ground
-        camera = new Camera(new Vector3f(WORLD_SIZE_X / 2.0f, WORLD_SIZE_Y + 1.0f, WORLD_SIZE_Z / 2.0f));
-        
-        // Set appropriate movement speed for world scale
-        camera.setMoveSpeed(10.0f);
-        
-        // Set mouse sensitivity for smoother camera control
-        camera.setMouseSensitivity(0.1f);
-        
-        // Capture mouse by default for first-person navigation
-        Mouse.setCaptured(mouseCaptured, window.getId());
-        
-        System.out.println("Camera initialized. Use WASD to move, mouse to look around, and ESC to toggle mouse capture.");
+
+        InputManager.setup(window.getWindowHandle());
+        camera = new Camera();
 
         // Load shaders
         try {
@@ -133,7 +116,6 @@ public class Game {
     }
 
     private void loop() {
-        // Create projection matrix once - doesn't need to be recreated every frame
         Matrix4f projection = new Matrix4f().perspective(
                 (float) Math.toRadians(70.0f),
                 (float) window.getWidth() / window.getHeight(),
@@ -141,57 +123,38 @@ public class Game {
                 1000.0f
         );
 
-        // Track timing for frame rate control
         while (!window.shouldClose()) {
             long currentTime = System.nanoTime();
             float deltaTime = (currentTime - lastFrameTime) / 1_000_000_000.0f;
             lastFrameTime = currentTime;
-            
-            // Safety cap to avoid spiral of death if game freezes temporarily
-            if (deltaTime > 0.25f) deltaTime = 0.25f;
+            if (deltaTime > 0.25f) deltaTime = 0.25f; // avoid spiral of death
             accumulator += deltaTime;
 
             // Process input every frame (delta-based movement)
             processInput(deltaTime);
-            
-            // Update camera (handles movement and rotation)
-            camera.update(deltaTime);
-            
-            // If mouse is captured, ensure deltas are consumed each frame
-            // This prevents drift or continuous rotation
-            if (mouseCaptured) {
-                // Force consume any remaining mouse movement
-                Mouse.getDeltaX();
-                Mouse.getDeltaY();
-            }
 
-            // Fixed timestep for logic/physics updates
+            // Fixed timestep for logic/physics (if needed)
             while (accumulator >= FIXED_DELTA_TIME) {
-                // update(FIXED_DELTA_TIME); // placeholder for future physics updates
+                // update(FIXED_DELTA_TIME); // placeholder for future logic
                 accumulator -= FIXED_DELTA_TIME;
             }
 
-            // Render the scene
+            // Render
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-            
             shader.bind();
             
-            // Set uniforms for the shader
+            // Set uniforms
             shader.setUniform("projection", projection);
             shader.setUniform("view", camera.getViewMatrix());
-            
-            // Create model matrix (identity for world blocks)
-            Matrix4f model = new Matrix4f();
-            shader.setUniform("model", model);
             
             // Bind texture if available
             if (blockTexture != null) {
                 GL13.glActiveTexture(GL13.GL_TEXTURE0);
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, blockTexture.getId());
-                shader.setUniform("textureSampler", 0);
-                shader.setUniform("useTexture", 1);
+                GL20.glUniform1i(GL20.glGetUniformLocation(shader.getId(), "textureSampler"), 0);
+                GL20.glUniform1i(GL20.glGetUniformLocation(shader.getId(), "useTexture"), 1);
             } else {
-                shader.setUniform("useTexture", 0);
+                GL20.glUniform1i(GL20.glGetUniformLocation(shader.getId(), "useTexture"), 0);
             }
             
             // Render the mesh
@@ -201,18 +164,53 @@ public class Game {
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
             shader.unbind();
             
-            // Update the window (swap buffers, poll events)
             window.update();
+            
+            // Update input state at the end of each frame
+            InputManager.update();
         }
     }
 
     // Delta-based movement and input
     private void processInput(float deltaTime) {
-        // Toggle mouse capture with Escape key
-        if (Keyboard.isKeyPressed(KeyCode.ESCAPE)) {
-            mouseCaptured = !mouseCaptured;
-            Mouse.setCaptured(mouseCaptured, window.getId());
+        float speed = 5.0f * deltaTime; // units per second
+        float yaw = (float) Math.toRadians(camera.getRotation().y);
+        float dx = (float) Math.sin(yaw);
+        float dz = (float) Math.cos(yaw);
+        Vector3f pos = camera.getPosition();
+
+        // Forward/backward
+        if (Keyboard.isKeyDown(KeyCode.W)) {
+            pos.x += dx * speed;
+            pos.z -= dz * speed;
         }
+        if (Keyboard.isKeyDown(KeyCode.S)) {
+            pos.x -= dx * speed;
+            pos.z += dz * speed;
+        }
+        // Strafe
+        if (Keyboard.isKeyDown(KeyCode.A)) {
+            pos.x -= dz * speed;
+            pos.z -= dx * speed;
+        }
+        if (Keyboard.isKeyDown(KeyCode.D)) {
+            pos.x += dz * speed;
+            pos.z += dx * speed;
+        }
+        // Up/down
+        if (Keyboard.isKeyDown(KeyCode.SPACE)) {
+            pos.y += speed;
+        }
+        if (Keyboard.isKeyDown(KeyCode.LEFT_SHIFT)) {
+            pos.y -= speed;
+        }
+        if (Keyboard.isKeyDown(KeyCode.ESCAPE)) {
+            GLFW.glfwSetInputMode(window.getWindowHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        }
+        // Mouse look
+        camera.getRotation().y += (float) Mouse.getDeltaX() * 0.1f;
+        camera.getRotation().x += (float) Mouse.getDeltaY() * 0.1f;
+        camera.getRotation().x = Math.max(-90, Math.min(90, camera.getRotation().x));
         
         // Toggle between meshing algorithms (for testing/comparison)
         if (Keyboard.isKeyPressed(KeyCode.G)) {
@@ -221,26 +219,19 @@ public class Game {
             // Regenerate the mesh with the new algorithm
             regenerateMesh();
         }
-        
-        // Print current position with P key (for debugging)
-        if (Keyboard.isKeyPressed(KeyCode.P)) {
-            Vector3f pos = camera.getPosition();
-            System.out.printf("Camera position: (%.2f, %.2f, %.2f)%n", pos.x, pos.y, pos.z);
-        }
     }
-
+    
     /**
      * Regenerates the mesh using the current meshing algorithm.
-     * This is an optimized implementation that properly cleans up resources.
      */
     private void regenerateMesh() {
-        // Clean up old mesh to avoid memory leaks
+        // Clean up old mesh
         if (mesh != null) {
             mesh.destroy();
         }
         
-        // Create blocks world
-        Block[][][] blocks = createTestWorld(WORLD_SIZE_X, WORLD_SIZE_Y, WORLD_SIZE_Z);
+        // Create blocks
+        Block[][][] blocks = createTestWorld(32, 8, 32);
         
         // Start performance measurement
         PerformanceMetrics.startMeasurement();

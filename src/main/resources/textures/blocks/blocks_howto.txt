@@ -1,0 +1,30 @@
+How to Create the Blocks Texture Atlas
+
+The game expects a file named 'blocks.png' in this directory, formatted as a 4x4 texture atlas.
+
+Instructions:
+1. Create a new image of 256x256 pixels (64x64 pixels per block texture)
+2. Divide the image into a 4x4 grid (16 cells total)
+3. Fill each cell with a different texture according to this layout:
+
+Row 0:
+- (0,0): Dirt texture (brown)
+- (1,0): Stone texture (gray)
+- (2,0): Grass texture (green top, brown sides)
+- (3,0): Sand texture (light yellow)
+
+Row 1:
+- (0,1): Wood texture (brown with lines)
+- (1,1): Leaves texture (dark green)
+- (2,1): Water texture (blue with alpha for transparency)
+- (3,1): Brick texture (reddish with mortar lines)
+
+Rows 2-3:
+- Additional textures for future use
+
+Format:
+- PNG format with RGBA channels
+- Each texture should be 64x64 pixels
+- Total image size: 256x256 pixels
+
+Until you create this file, the game will use fallback solid colors for each block type.

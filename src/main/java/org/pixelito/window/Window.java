@@ -4,6 +4,8 @@ import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.system.MemoryUtil;
+import org.pixelito.input.Keyboard;
+import org.pixelito.input.Mouse;
 
 public class Window {
     private long windowHandle;
@@ -14,6 +16,10 @@ public class Window {
     private boolean vSync;
 
     private GLFWErrorCallback errorCallback;
+    private GLFWKeyCallback keyCallback;
+    private GLFWCursorPosCallback cursorPosCallback;
+    private GLFWMouseButtonCallback mouseButtonCallback;
+    private GLFWScrollCallback scrollCallback;
 
     public Window(int width, int height, String title, boolean vSync) {
         this.width = width;
@@ -39,6 +45,8 @@ public class Window {
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_CORE_PROFILE);
+        GLFW.glfwWindowHint(GLFW.GLFW_FOCUSED, GLFW.GLFW_TRUE); // Start focused
+        GLFW.glfwWindowHint(GLFW.GLFW_FOCUS_ON_SHOW, GLFW.GLFW_TRUE); // Focus when shown
 
         // Crear ventana
         windowHandle = GLFW.glfwCreateWindow(width, height, title, MemoryUtil.NULL, MemoryUtil.NULL);
@@ -48,6 +56,48 @@ public class Window {
 
         // Callback de resize
         GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, w, h) -> resized = true);
+
+        // Set up keyboard callback
+        keyCallback = new GLFWKeyCallback() {
+            @Override
+            public void invoke(long window, int key, int scancode, int action, int mods) {
+                Keyboard.setKey(key, action != GLFW.GLFW_RELEASE);
+            }
+        };
+        GLFW.glfwSetKeyCallback(windowHandle, keyCallback);
+        
+        // Set up mouse position callback
+        cursorPosCallback = new GLFWCursorPosCallback() {
+            @Override
+            public void invoke(long window, double xpos, double ypos) {
+                Mouse.setPosition(xpos, ypos);
+            }
+        };
+        GLFW.glfwSetCursorPosCallback(windowHandle, cursorPosCallback);
+        
+        // Set up mouse button callback
+        mouseButtonCallback = new GLFWMouseButtonCallback() {
+            @Override
+            public void invoke(long window, int button, int action, int mods) {
+                Mouse.setButton(button, action != GLFW.GLFW_RELEASE);
+            }
+        };
+        GLFW.glfwSetMouseButtonCallback(windowHandle, mouseButtonCallback);
+        
+        // Set up scroll callback
+        scrollCallback = new GLFWScrollCallback() {
+            @Override
+            public void invoke(long window, double xoffset, double yoffset) {
+                Mouse.setScroll(xoffset, yoffset);
+            }
+        };
+        GLFW.glfwSetScrollCallback(windowHandle, scrollCallback);
+        
+        // Initialize mouse with current cursor position
+        double[] xPos = new double[1];
+        double[] yPos = new double[1];
+        GLFW.glfwGetCursorPos(windowHandle, xPos, yPos);
+        Mouse.init(xPos[0], yPos[0]);
 
         // Centrar la ventana
         GLFWVidMode vidmode = GLFW.glfwGetVideoMode(GLFW.glfwGetPrimaryMonitor());
@@ -69,6 +119,9 @@ public class Window {
 
         // Mostrar ventana
         GLFW.glfwShowWindow(windowHandle);
+        
+        // Ensure the window is focused
+        GLFW.glfwFocusWindow(windowHandle);
 
         // Cargar capacidades OpenGL
         GL.createCapabilities();
@@ -78,25 +131,37 @@ public class Window {
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glEnable(GL11.GL_CULL_FACE);
         GL11.glCullFace(GL11.GL_BACK);
+        
+        // Enable alpha blending for transparent textures
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        
+        System.out.println("Window created successfully with handle: " + windowHandle);
     }
 
     public void update() {
         GLFW.glfwSwapBuffers(windowHandle);
         GLFW.glfwPollEvents();
+        
+        // Update input states at the end of the frame
+        Keyboard.update();
+        Mouse.update();
     }
 
     public boolean shouldClose() {
         return GLFW.glfwWindowShouldClose(windowHandle);
     }
 
-    public void destroy() {
-        GLFW.glfwDestroyWindow(windowHandle);
-        GLFW.glfwTerminate();
-        if (errorCallback != null) errorCallback.free();
+    public long getId() {
+        return windowHandle;
     }
 
-    public long getWindowHandle() {
-        return windowHandle;
+    public int getWidth() {
+        return width;
+    }
+
+    public int getHeight() {
+        return height;
     }
 
     public boolean isResized() {
@@ -107,11 +172,15 @@ public class Window {
         this.resized = resized;
     }
 
-    public int getWidth() {
-        return width;
-    }
-
-    public int getHeight() {
-        return height;
+    public void destroy() {
+        // Free callbacks
+        if (keyCallback != null) keyCallback.free();
+        if (cursorPosCallback != null) cursorPosCallback.free();
+        if (mouseButtonCallback != null) mouseButtonCallback.free();
+        if (scrollCallback != null) scrollCallback.free();
+        
+        GLFW.glfwDestroyWindow(windowHandle);
+        GLFW.glfwTerminate();
+        if (errorCallback != null) errorCallback.free();
     }
 }
