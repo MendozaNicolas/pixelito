@@ -26,4 +26,24 @@ public class Camera {
     public Vector3f getRotation() {
         return rotation;
     }
+
+    public Vector3f getForwardVector() {
+        float yawRad = (float) Math.toRadians(rotation.y);
+        float pitchRad = (float) Math.toRadians(rotation.x);
+
+        return new Vector3f(
+                (float) (-Math.sin(yawRad)),
+                0,
+                (float) (-Math.cos(yawRad))
+        ).normalize();
+    }
+
+    public Vector3f getRightVector() {
+        float yawRad = (float) Math.toRadians(rotation.y - 90);
+        return new Vector3f(
+                (float) (-Math.sin(yawRad)),
+                0,
+                (float) (-Math.cos(yawRad))
+        ).normalize();
+    }
 }

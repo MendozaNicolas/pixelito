@@ -1,12 +1,18 @@
 package org.pixelito;
 
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
+import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.pixelito.block.Block;
 import org.pixelito.block.BlockType;
 import org.pixelito.camera.Camera;
 import org.pixelito.graphics.ShaderProgram;
+import org.pixelito.input.InputManager;
+import org.pixelito.input.KeyCode;
+import org.pixelito.input.Keyboard;
+import org.pixelito.input.Mouse;
 import org.pixelito.render.Mesh;
 import org.pixelito.render.VoxelMesher;
 import org.pixelito.window.Window;
@@ -28,6 +34,7 @@ public class Game {
         window = new Window(1280, 720, "Pixelito", true);
         window.create();
 
+        InputManager.setup(window.getWindowHandle());
         camera = new Camera();
 
         // Cargar shaders
@@ -74,6 +81,64 @@ public class Game {
 
             GL20.glUniformMatrix4fv(projLoc, false, projection.get(new float[16]));
             GL20.glUniformMatrix4fv(viewLoc, false, camera.getViewMatrix().get(new float[16]));
+
+
+
+            // LÓGICA DE LOS CONTROLES
+            float speed = 0.1f;
+
+            float yaw = (float) Math.toRadians(camera.getRotation().y);
+            float dx = (float) Math.sin(yaw) * speed;
+            float dz = (float) Math.cos(yaw) * speed;
+
+            Vector3f pos = camera.getPosition();
+
+            // Movimiento frontal
+            if (Keyboard.isKeyDown(KeyCode.W)) {
+                pos.x += dx;
+                pos.z -= dz;
+            }
+            if (Keyboard.isKeyDown(KeyCode.S)) {
+                pos.x -= dx;
+                pos.z += dz;
+            }
+
+            // Movimiento lateral (perpendicular)
+            if (Keyboard.isKeyDown(KeyCode.A)) {
+                pos.x -= dz;
+                pos.z -= dx;
+            }
+            if (Keyboard.isKeyDown(KeyCode.D)) {
+                pos.x += dz;
+                pos.z += dx;
+            }
+
+            if (Keyboard.isKeyDown(KeyCode.SPACE)) {
+                pos.y += speed;
+            }
+
+            if (Keyboard.isKeyDown(KeyCode.LEFT_SHIFT)) {
+                pos.y -= speed;
+            }
+
+            if (Keyboard.isKeyDown(KeyCode.ESCAPE)) {
+                GLFW.glfwSetInputMode(window.getWindowHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+            }
+
+            // Mouse look
+            camera.getRotation().y += (float) Mouse.getDeltaX() * 0.1f;
+            camera.getRotation().x += (float) Mouse.getDeltaY() * 0.1f;
+
+            // Limitar ángulo vertical (para que no dé la vuelta)
+            camera.getRotation().x = Math.max(-90, Math.min(90, camera.getRotation().x));
+
+            // Reset mouse deltas
+            Mouse.resetDeltas();
+            // FIN LÓGICA DE LOS CONTROLES
+
+
+
+
 
             mesh.render();
             shader.unbind();
